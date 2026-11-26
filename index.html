@@ -93,8 +93,6 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
       <div id="abOut" class="note">Antes / después: toca «Marcar A», haz tu cambio en la consola y mira aquí cuánto cambió cada zona. La línea punteada es A.</div></section>
     <section class="card" id="pac" hidden><h2>Medición del PA · Input 1 = señal de la consola (referencia) · Input 2 = micrófono de medición</h2>
       <div class="lv"><span>Retardo <b id="pd">—</b></span><span>Distancia <b id="pm">—</b></span><span>Coherencia <b id="pc">—</b></span></div>
-      <div class="row" style="margin-top:10px"><button id="pnk">Ruido rosa: apagado</button><label style="display:flex;gap:6px;align-items:center">Nivel<select id="pnl"><option value="-30">−30 dBFS</option><option value="-24">−24 dBFS</option><option value="-18" selected>−18 dBFS</option><option value="-12">−12 dBFS</option></select></label></div>
-      <p class="note">El ruido rosa sale por la salida de audio del teléfono (con la interfaz USB conectada, sale por la interfaz). Prueba de lazo: salida 1 → Input 1, salida 2 → Input 2, Direct Monitor apagado. Resultado correcto: 0,0 ms, respuesta plana y coherencia cercana al 100 %.</p>
       <div class="fig" id="fig2" style="min-height:260px;margin-top:8px"><canvas id="cv2"></canvas></div>
       <ul id="patips" class="tl" style="margin-top:10px"><li class="ok">Pon música o ruido rosa por el PA y espera 10–20 segundos.</li></ul>
       <p class="note">Línea: respuesta del PA en el lugar del micrófono (0 = promedio). Tramos tenues = poca coherencia (reflexiones o ruido): no los corrijas con EQ. El retardo incluye el procesador del PA y el viaje del sonido por el aire.</p></section>
@@ -106,6 +104,9 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
       <div class="meter"><div class="tgt" style="left:80%;width:10%"></div><div class="rms" id="mr"></div><div class="pk" id="mp"></div></div>
       <div class="lv"><span>RMS <b id="vr">—</b></span><span>Pico <b id="vp">—</b></span><span>Máx <b id="vm">—</b></span></div>
       <p class="note">Franja verde: picos entre −12 y −6 dBFS.</p></section>
+    <section class="card"><h2>Generador de ruido rosa</h2>
+      <div class="row" style="margin-top:0"><button id="pnk">Ruido rosa: apagado</button><label style="display:flex;gap:6px;align-items:center">Nivel<select id="pnl"><option value="-30">−30 dBFS</option><option value="-24">−24 dBFS</option><option value="-18" selected>−18 dBFS</option><option value="-12">−12 dBFS</option></select></label></div>
+      <p class="note">El ruido rosa sale por la salida de audio del teléfono (con la interfaz USB conectada, sale por la interfaz). Prueba de lazo: salida 1 → Input 1, salida 2 → Input 2, Direct Monitor apagado. En «Medir PA», resultado correcto: 0,0 ms, respuesta plana y coherencia cercana al 100 %.</p></section>
     <section class="card"><h2>Sonoridad (LUFS aprox.)</h2>
       <div class="lv"><span>Moment. <b id="lm">—</b></span><span>3 s <b id="ls">—</b></span><span>Integrado <b id="li">—</b></span></div>
       <div class="row" style="margin-top:8px;justify-content:space-between"><span id="lb" class="note" style="margin:0">Nivel base: sin fijar</span><button id="lbb" disabled>Fijar nivel base</button></div>
@@ -126,7 +127,7 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
   </div>
 </main>
 <div style="text-align:center;padding:0 16px"><button id="dgb">Diagnóstico de audio</button><pre id="dgo" style="text-align:left;white-space:pre-wrap;font-size:13px;display:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px"></pre></div>
-<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 16 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
+<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 17 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
 <dialog id="dlg"><h2 style="margin:0 0 6px;font:800 28px 'Barlow Condensed',sans-serif">Cómo conectar</h2>
 <ol style="padding-left:20px;margin:0;display:grid;gap:8px;font-size:16px">
 <li><b>Interfaz de audio USB</b> (por ejemplo, una Behringer UMC) conectada al teléfono con cable o adaptador <b>OTG USB-C</b>, o a la computadora.</li>
