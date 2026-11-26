@@ -8,9 +8,7 @@ import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
-import android.media.AudioAttributes
 import android.media.AudioRecord
-import android.media.AudioTrack
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.os.Bundle
@@ -88,7 +86,6 @@ class MainActivity : Activity() {
         try { getSystemService(AudioManager::class.java).unregisterAudioDeviceCallback(devCb) } catch (e: Exception) { }
         bridge.pinkStop()
         bridge.stop()
-        bridge.pinkStop()
         web.destroy()
         super.onDestroy()
     }
@@ -361,95 +358,6 @@ class AudioBridge(private val act: MainActivity) {
             it.release()
         }
         trk = null
-    }
-
-    // ---------- Generador de ruido rosa por la salida USB ----------
-    @Volatile private var pinkOn = false
-    @Volatile private var pinkGain = 0.125f
-    private var pinkThread: Thread? = null
-    private var track: AudioTrack? = null
-
-    @JavascriptInterface
-    fun pinkStart(levelDb: Float): String {
-        pinkStop()
-        val res = JSONObject()
-        pinkGain = Math.pow(10.0, levelDb / 20.0).toFloat()
-        val outs = am().getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-        val usb = outs.firstOrNull { isUsb(it.type) }
-        val sr = 48000
-        val min = AudioTrack.getMinBufferSize(sr, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
-        val t = try {
-            AudioTrack.Builder()
-                .setAudioAttributes(AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-                .setAudioFormat(AudioFormat.Builder()
-                    .setSampleRate(sr)
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
-                .setBufferSizeInBytes(maxOf(min, sr / 5 * 4))
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .build()
-        } catch (e: Exception) {
-            res.put("ok", false); res.put("error", "no se pudo abrir la salida: ${e.message}"); return res.toString()
-        }
-        if (usb != null) t.setPreferredDevice(usb)
-        // 10 s de ruido rosa (filtro de Paul Kellet), normalizado a RMS 1
-        val n = sr * 10
-        val pink = FloatArray(n)
-        val rnd = java.util.Random()
-        var b0 = 0.0; var b1 = 0.0; var b2 = 0.0; var b3 = 0.0; var b4 = 0.0; var b5 = 0.0; var b6 = 0.0; var ss = 0.0
-        for (i in 0 until n) {
-            val w = rnd.nextDouble() * 2 - 1
-            b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759; b2 = 0.969 * b2 + w * 0.153852
-            b3 = 0.8665 * b3 + w * 0.3104856; b4 = 0.55 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.016898
-            val v = b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362
-            b6 = w * 0.115926
-            pink[i] = v.toFloat(); ss += v * v
-        }
-        val k = (1.0 / Math.sqrt(ss / n)).toFloat()
-        for (i in 0 until n) pink[i] *= k
-        track = t
-        pinkOn = true
-        t.play()
-        val th = Thread {
-            val frames = 960
-            val bufOut = ShortArray(frames * 2)
-            var pos = 0
-            while (pinkOn) {
-                val g = pinkGain
-                for (f in 0 until frames) {
-                    var v = pink[pos] * g
-                    if (v > 1f) v = 1f else if (v < -1f) v = -1f
-                    val sv = (v * 32767f).toInt().toShort()
-                    bufOut[f * 2] = sv; bufOut[f * 2 + 1] = sv
-                    pos++; if (pos >= n) pos = 0
-                }
-                t.write(bufOut, 0, bufOut.size)
-            }
-        }
-        th.start()
-        pinkThread = th
-        val routed = t.routedDevice?.let { label(it) } ?: usb?.let { label(it) } ?: "salida del teléfono"
-        res.put("ok", true); res.put("device", routed); res.put("usb", usb != null)
-        return res.toString()
-    }
-
-    @JavascriptInterface
-    fun pinkLevel(levelDb: Float) {
-        pinkGain = Math.pow(10.0, levelDb / 20.0).toFloat()
-    }
-
-    @JavascriptInterface
-    fun pinkStop() {
-        pinkOn = false
-        try { pinkThread?.join(500) } catch (e: Exception) { }
-        pinkThread = null
-        track?.let {
-            try { it.stop() } catch (e: Exception) { }
-            it.release()
-        }
-        track = null
     }
 
     @JavascriptInterface
