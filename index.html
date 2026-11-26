@@ -122,7 +122,7 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
       <p class="note">Cópialo y compártelo con otro técnico o con tu asistente de IA para revisar los ajustes.</p><textarea id="out" readonly></textarea></section>
   </div>
 </main>
-<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 10 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
+<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 11 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
 <dialog id="dlg"><h2 style="margin:0 0 6px;font:800 28px 'Barlow Condensed',sans-serif">Cómo conectar</h2>
 <ol style="padding-left:20px;margin:0;display:grid;gap:8px;font-size:16px">
 <li><b>Interfaz de audio USB</b> (por ejemplo, una Behringer UMC) conectada al teléfono con cable o adaptador <b>OTG USB-C</b>, o a la computadora.</li>
@@ -371,17 +371,20 @@ function measurePA(sr){
   const M=65536,xr=new Float64Array(M),xi=new Float64Array(M),yr=new Float64Array(M),yi=new Float64Array(M);xr.set(x);yr.set(y);fft(xr,xi);fft(yr,yi);
   const rr=new Float64Array(M),ri=new Float64Array(M);for(let k=0;k<M;k++){const a=xr[k]*yr[k]+xi[k]*yi[k],b=xr[k]*yi[k]-xi[k]*yr[k],mg=Math.hypot(a,b)+1e-12;rr[k]=a/mg;ri[k]=b/mg}fft(rr,ri,true);
   const maxLag=Math.min(Math.round(0.3*sr),M/2-1);let best=0,bv=0,sa=0;for(let k=0;k<=maxLag;k++){const v=Math.abs(rr[k]);sa+=v;if(v>bv){bv=v;best=k}}
-  const conf=bv/(sa/(maxLag+1));if(conf<8){$('patips').innerHTML='<li>Retardo poco claro: sube el nivel del PA, acerca el micrófono o usa ruido rosa.</li>';return}
+  const conf=bv/(sa/(maxLag+1));if(conf<12){$('patips').innerHTML='<li>Todavía no encuentro relación entre las entradas. Revisa que el PA suene con la misma señal que entra por Input 1, que el micrófono tenga +48 V y ganancia suficiente, y acércalo a la bocina. El ruido rosa ayuda.</li>';return}
   paDel.push(best);if(paDel.length>5)paDel.shift();const ds=[...paDel].sort((a,b)=>a-b),d=ds[ds.length>>1],ms=d/sr*1000,inv=rr[best]<0;
-  $('pd').textContent=ms.toFixed(1).replace('.',',')+' ms';$('pm').textContent=(ms*0.343).toFixed(1).replace('.',',')+' m';
+  
   const L2=16384;if(d+L2>65536)return;const xs=seg(RL,(wpos-d+65536)&65535,L2),ys=seg(RR,wpos,L2),ar=new Float64Array(L2),ai=new Float64Array(L2),br=new Float64Array(L2),bi=new Float64Array(L2);
   for(let i=0;i<L2;i++){const w=0.5-0.5*Math.cos(2*Math.PI*i/(L2-1));ar[i]=xs[i]*w;br[i]=ys[i]*w}fft(ar,ai);fft(br,bi);
   if(!paG)paG={xr:new Float64Array(L2/2),xi:new Float64Array(L2/2),xx:new Float64Array(L2/2),yy:new Float64Array(L2/2),n:0};const al=paG.n<3?1/(paG.n+1):0.3;paG.n++;
   for(let k=0;k<L2/2;k++){const cr=ar[k]*br[k]+ai[k]*bi[k],ci=ar[k]*bi[k]-ai[k]*br[k];paG.xr[k]+=al*(cr-paG.xr[k]);paG.xi[k]+=al*(ci-paG.xi[k]);paG.xx[k]+=al*(ar[k]*ar[k]+ai[k]*ai[k]-paG.xx[k]);paG.yy[k]+=al*(br[k]*br[k]+bi[k]*bi[k]-paG.yy[k])}
   const bw=sr/L2,PB=BANDS.filter(f=>f>=40);const res=PB.map(fc=>{const lo=Math.max(1,Math.floor(fc/2**(1/6)/bw)),hi=Math.min(L2/2-1,Math.ceil(fc*2**(1/6)/bw));let sr2=0,si=0,sx=0,sy=0;for(let k=lo;k<=hi;k++){sr2+=paG.xr[k];si+=paG.xi[k];sx+=paG.xx[k];sy+=paG.yy[k]}const m2=sr2*sr2+si*si;return{f:fc,h:10*Math.log10(m2/(sx*sx)+1e-20),c:m2/(sx*sy+1e-30)}});
   const md=res.filter(r=>r.f>=125&&r.f<=8000).map(r=>r.h).sort((a,b)=>a-b),mm=md[md.length>>1];res.forEach(r=>r.h-=mm);paRes={res,ms,inv,conf};
-  const coh=res.filter(r=>r.f>=125&&r.f<=8000).reduce((a,r)=>a+r.c,0)/res.filter(r=>r.f>=125&&r.f<=8000).length;$('pc').textContent=Math.round(coh*100)+' %';
-  if(inv)tips.push({c:'hi',t:'Polaridad invertida entre la consola y el micrófono: revisa el cableado del PA, del amplificador o del micrófono de medición.'});
+  const coh=res.filter(r=>r.f>=125&&r.f<=8000).reduce((a,r)=>a+r.c,0)/res.filter(r=>r.f>=125&&r.f<=8000).length;$('pc').textContent=Math.round(coh*100)+' %';paRes.coh=coh;
+  if(coh<0.3){paRes.valid=false;$('pd').textContent='—';$('pm').textContent='—';
+    $('patips').innerHTML='<li class="hi">Las dos entradas no tienen relación todavía (coherencia '+Math.round(coh*100)+' %). Revisa que el PA esté sonando con la misma señal que entra por Input 1, que el micrófono de medición tenga +48 V y ganancia suficiente, y que esté a 3–10 m de la bocina apuntando hacia ella.</li>';drawPA();return}
+  paRes.valid=true;$('pd').textContent=ms.toFixed(1).replace('.',',')+' ms';$('pm').textContent=(ms*0.343).toFixed(1).replace('.',',')+' m';
+  if(inv&&coh>=0.5)tips.push({c:'hi',t:'Polaridad invertida entre la consola y el micrófono: revisa el cableado del PA, del amplificador o del micrófono de medición.'});
   if(coh<0.5)tips.push({c:'',t:'Coherencia baja: acerca el micrófono al PA (eje de la bocina, a 5–10 m) o sube el nivel de prueba.'});
   res.filter(r=>r.h>3&&r.c>0.6).sort((a,b)=>b.h-a.h).slice(0,5).forEach(r=>tips.push({c:r.h>6?'hi':'',t:`Pico en ${fmtF(r.f)} (${fmtD(r.h)} dB) → GEQ del Main ${fmtG(geqBand(r.f))} −${Math.min(6,Math.round(r.h-1))} dB`}));
   res.filter(r=>r.h<-6&&r.c<0.5).slice(0,2).forEach(r=>tips.push({c:'ok',t:`Hueco en ${fmtF(r.f)} con poca coherencia: es cancelación del salón. No lo subas con EQ; mueve el micrófono o revisa la posición de las bocinas.`}));
@@ -420,7 +423,7 @@ $('rep').onclick=()=>{
   $('out').value=`INFORME F-26 Escucha en vivo\nFuente: ${m.n} · canal ${$('ch').selectedOptions[0].text}\nCurva objetivo: ${rf?'referencia propia del '+rf.d:'general'}\nTiempo analizado: ${mins} min\nPico máximo: ${fmtD(peakMax)} dBFS\nDesviación promedio por zona (frente a la curva objetivo):\n${z}\nResonancias candidatas:\n${r}`+(m.lr&&monoIn?`\nEstéreo: no disponible (el dispositivo recibe 1 canal)`:'')+(m.lr&&!monoIn&&stAcc.n?`\nEstéreo: balance ${fmtD(stAcc.b/stAcc.n)} dB (+ = izquierda) · correlación ${fmtD(stAcc.c/stAcc.n)}`:'')+`\nSonoridad: integrado ${lInt>-70?fmtD(lInt):'—'} LUFS · máximo 3 s ${lMaxS>-70?fmtD(lMaxS):'—'} LUFS`+(lBase?` · base ${fmtD(lBase.v)} LUFS (${lBase.h})`+(lSlow!=null?`, ahora ${fmtD(lSlow-lBase.v)} LU`:''):'')
     +(fbLog.length?`\nFeedback de la noche:\n`+fbLog.slice(0,12).map(x=>`- ${x.h}: ${fmtF(x.f)} → GEQ ${fmtG(x.g)}${x.n>1?' (×'+x.n+')':''}`).join('\n'):'\nFeedback de la noche: ninguno')
     +(A&&A.mode===mk()?`\nCambio desde A (${A.h}): `+ZONES.map(z=>`${z.n} ${fmtD((zdev[z.k]||0)-A.z[z.k])}`).join(' · '):'')
-    +(m.pa&&paRes?`\nMedición del PA: retardo ${paRes.ms.toFixed(1).replace('.',',')} ms (${(paRes.ms*0.343).toFixed(1).replace('.',',')} m)${paRes.inv?' · POLARIDAD INVERTIDA':''}\nRespuesta (dB / coherencia %):\n`+paRes.res.map(r=>`${fmtF(r.f)}: ${fmtD(r.h)} / ${Math.round(r.c*100)}%`).join('\n'):'')
+    +(m.pa&&paRes&&paRes.valid===false?`\nMedición del PA: sin relación entre las entradas (coherencia ${Math.round((paRes.coh||0)*100)} %)`:'')+(m.pa&&paRes&&paRes.valid!==false?`\nMedición del PA: retardo ${paRes.ms.toFixed(1).replace('.',',')} ms (${(paRes.ms*0.343).toFixed(1).replace('.',',')} m)${paRes.inv?' · POLARIDAD INVERTIDA':''}\nRespuesta (dB / coherencia %):\n`+paRes.res.map(r=>`${fmtF(r.f)}: ${fmtD(r.h)} / ${Math.round(r.c*100)}%`).join('\n'):'')
     +(rf?`\nReferencia guardada (dB por banda, 25 Hz–16 kHz):\n${rf.b.join(' ')}`:'');
 };
 $('cp').onclick=async()=>{if(!$('out').value)$('rep').onclick();try{await navigator.clipboard.writeText($('out').value);$('cp').textContent='Copiado'}catch(e){$('out').select();$('cp').textContent='Selecciona y copia'}setTimeout(()=>$('cp').textContent='Copiar',1800)};
