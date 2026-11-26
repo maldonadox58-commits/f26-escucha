@@ -92,6 +92,8 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
       <div id="abOut" class="note">Antes / después: toca «Marcar A», haz tu cambio en la consola y mira aquí cuánto cambió cada zona. La línea punteada es A.</div></section>
     <section class="card" id="pac" hidden><h2>Medición del PA · Input 1 = señal de la consola (referencia) · Input 2 = micrófono de medición</h2>
       <div class="lv"><span>Retardo <b id="pd">—</b></span><span>Distancia <b id="pm">—</b></span><span>Coherencia <b id="pc">—</b></span></div>
+      <div class="row" style="margin-top:10px"><button id="pnk">Ruido rosa: apagado</button><label style="display:flex;gap:6px;align-items:center">Nivel<select id="pnl"><option value="-30">−30 dBFS</option><option value="-24">−24 dBFS</option><option value="-18" selected>−18 dBFS</option><option value="-12">−12 dBFS</option></select></label></div>
+      <p class="note">El ruido rosa sale por la salida de audio del teléfono (con la interfaz USB conectada, sale por la interfaz). Prueba de lazo: salida 1 → Input 1, salida 2 → Input 2, Direct Monitor apagado. Resultado correcto: 0,0 ms, respuesta plana y coherencia cercana al 100 %.</p>
       <div class="fig" id="fig2" style="min-height:260px;margin-top:8px"><canvas id="cv2"></canvas></div>
       <ul id="patips" class="tl" style="margin-top:10px"><li class="ok">Pon música o ruido rosa por el PA y espera 10–20 segundos.</li></ul>
       <p class="note">Línea: respuesta del PA en el lugar del micrófono (0 = promedio). Tramos tenues = poca coherencia (reflexiones o ruido): no los corrijas con EQ. El retardo incluye el procesador del PA y el viaje del sonido por el aire.</p></section>
@@ -122,7 +124,7 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
       <p class="note">Cópialo y compártelo con otro técnico o con tu asistente de IA para revisar los ajustes.</p><textarea id="out" readonly></textarea></section>
   </div>
 </main>
-<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 11 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
+<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 12 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
 <dialog id="dlg"><h2 style="margin:0 0 6px;font:800 28px 'Barlow Condensed',sans-serif">Cómo conectar</h2>
 <ol style="padding-left:20px;margin:0;display:grid;gap:8px;font-size:16px">
 <li><b>Interfaz de audio USB</b> (por ejemplo, una Behringer UMC) conectada al teléfono con cable o adaptador <b>OTG USB-C</b>, o a la computadora.</li>
@@ -392,6 +394,16 @@ function measurePA(sr){
   tips.push({c:'ok',t:'Para alinear subs y mains: mide solo los mains y anota el retardo; luego solo los subs. Pon la diferencia como delay en el que llega antes.'});
   $('patips').innerHTML=tips.map(o=>`<li class="${o.c}">${o.t}</li>`).join('');drawPA();
 }
+let gCtx=null,gSrc=null,gGain=null;
+function pinkBuffer(c){const n=c.sampleRate*10,b=c.createBuffer(2,n,c.sampleRate),d=b.getChannelData(0);let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0,ss=0;
+  for(let i=0;i<n;i++){const w=Math.random()*2-1;b0=0.99886*b0+w*0.0555179;b1=0.99332*b1+w*0.0750759;b2=0.969*b2+w*0.153852;b3=0.8665*b3+w*0.3104856;b4=0.55*b4+w*0.5329522;b5=-0.7616*b5-w*0.016898;const v=b0+b1+b2+b3+b4+b5+b6+w*0.5362;b6=w*0.115926;d[i]=v;ss+=v*v}
+  const k=1/Math.sqrt(ss/n);for(let i=0;i<n;i++)d[i]*=k;b.getChannelData(1).set(d);return b}
+function pinkLevel(){if(gGain)gGain.gain.value=10**(parseFloat($('pnl').value)/20)}
+$('pnk').onclick=async()=>{
+  if(gSrc){try{gSrc.stop()}catch(e){}gSrc=null;$('pnk').textContent='Ruido rosa: apagado';return}
+  try{if(!gCtx)gCtx=new AudioContext({sampleRate:48000});await gCtx.resume();gGain=gCtx.createGain();pinkLevel();gSrc=gCtx.createBufferSource();gSrc.buffer=pinkBuffer(gCtx);gSrc.loop=true;gSrc.connect(gGain);gGain.connect(gCtx.destination);gSrc.start();$('pnk').textContent='Ruido rosa: SONANDO'}
+  catch(e){$('pnk').textContent='Ruido rosa: error'}};
+$('pnl').onchange=pinkLevel;
 const cv2=$('cv2');let W2=0,H2=0;
 new ResizeObserver(()=>{const r=$('fig2').getBoundingClientRect(),k=devicePixelRatio||1;W2=r.width;H2=r.height;cv2.width=W2*k;cv2.height=H2*k;cv2.getContext('2d').setTransform(k,0,0,k,0,0);drawPA()}).observe($('fig2'));
 function drawPA(){
