@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
+import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -11,6 +12,8 @@ import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Base64
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
@@ -26,6 +29,14 @@ import java.io.ByteArrayOutputStream
 class MainActivity : Activity() {
     private lateinit var web: WebView
     private lateinit var bridge: AudioBridge
+    private val devCb = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = notifyDevices()
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = notifyDevices()
+    }
+
+    private fun notifyDevices() {
+        if (::web.isInitialized) web.evaluateJavascript("window.f26DevChanged&&window.f26DevChanged()", null)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,6 +57,12 @@ class MainActivity : Activity() {
         bridge = AudioBridge(this)
         web.addJavascriptInterface(bridge, "F26Native")
         web.loadUrl("https://appassets.androidplatform.net/assets/index.html")
+        getSystemService(AudioManager::class.java).registerAudioDeviceCallback(devCb, Handler(Looper.getMainLooper()))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        notifyDevices()
     }
 
     fun setKeepOn(on: Boolean) {
@@ -66,6 +83,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        try { getSystemService(AudioManager::class.java).unregisterAudioDeviceCallback(devCb) } catch (e: Exception) { }
         bridge.pinkStop()
         bridge.stop()
         web.destroy()
@@ -111,7 +129,13 @@ class AudioBridge(private val act: MainActivity) {
     @JavascriptInterface
     fun devices(): String {
         val arr = JSONArray()
+        var micAdded = false
         for (d in am().getDevices(AudioManager.GET_DEVICES_INPUTS)) {
+            // Solo entradas útiles: USB, micrófono del teléfono (una vez), auricular con cable y Bluetooth.
+            val t = d.type
+            val useful = isUsb(t) || t == 3 || t == 7 || t == 26 || (t == 15 && !micAdded)
+            if (!useful) continue
+            if (t == 15) micAdded = true
             val o = JSONObject()
             o.put("id", d.id)
             o.put("name", label(d))

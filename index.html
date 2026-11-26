@@ -124,7 +124,7 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
       <p class="note">Cópialo y compártelo con otro técnico o con tu asistente de IA para revisar los ajustes.</p><textarea id="out" readonly></textarea></section>
   </div>
 </main>
-<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 13 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
+<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 14 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
 <dialog id="dlg"><h2 style="margin:0 0 6px;font:800 28px 'Barlow Condensed',sans-serif">Cómo conectar</h2>
 <ol style="padding-left:20px;margin:0;display:grid;gap:8px;font-size:16px">
 <li><b>Interfaz de audio USB</b> (por ejemplo, una Behringer UMC) conectada al teléfono con cable o adaptador <b>OTG USB-C</b>, o a la computadora.</li>
@@ -184,6 +184,8 @@ async function listDevs(){
     if(cur&&[...$('dev').options].some(o=>o.value===cur))$('dev').value=cur;else{const u=d.find(x=>x.usb);if(u)$('dev').value=String(u.id)}}catch(e){}return}
   try{const d=(await navigator.mediaDevices.enumerateDevices()).filter(x=>x.kind==='audioinput');const cur=$('dev').value;$('dev').innerHTML='<option value="">Predeterminada</option>'+d.map((x,i)=>`<option value="${x.deviceId}">${x.label||'Entrada '+(i+1)}</option>`).join('');$('dev').value=cur}catch(e){}}
 listDevs();
+window.f26DevChanged=()=>{const before=$('dev').value;listDevs().then(()=>{if(NAT&&!running){const u=[...$('dev').options].find(o=>/USB/i.test(o.text));if(u)$('dev').value=u.value}})};
+$('dev').addEventListener('focus',()=>{if(NAT)listDevs()});
 function route(){if(!gainL)return;const c=$('ch').value;gainL.gain.value=c==='0'?1:c==='2'?.5:0;gainR.gain.value=c==='1'?1:c==='2'?.5:0}
 function pumpNat(){if(!NAT||!srcN)return;const b=NAT.read();if(!b)return;const bin=atob(b),n=bin.length>>2,L=new Float32Array(n),R=new Float32Array(n);
   for(let k=0,j=0;k<n;k++,j+=4){let l=bin.charCodeAt(j)|(bin.charCodeAt(j+1)<<8),r=bin.charCodeAt(j+2)|(bin.charCodeAt(j+3)<<8);if(l>32767)l-=65536;if(r>32767)r-=65536;L[k]=l/32768;R[k]=r/32768}
