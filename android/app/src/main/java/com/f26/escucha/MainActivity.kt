@@ -3,10 +3,12 @@ package com.f26.escucha
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
+import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.os.Bundle
 import android.util.Base64
@@ -64,6 +66,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        bridge.pinkStop()
         bridge.stop()
         web.destroy()
         super.onDestroy()
@@ -198,6 +201,116 @@ class AudioBridge(private val act: MainActivity) {
             out.reset()
             Base64.encodeToString(b, Base64.NO_WRAP)
         }
+    }
+
+    // ---------- Generador de ruido rosa por la salida USB ----------
+    private var trk: AudioTrack? = null
+    private var pinkThread: Thread? = null
+    @Volatile private var pinkOn = false
+    @Volatile private var pinkGain = 0.125f
+    private var pinkTable: FloatArray? = null
+
+    private fun makePink(n: Int): FloatArray {
+        val d = FloatArray(n)
+        val rnd = java.util.Random()
+        var b0 = 0.0; var b1 = 0.0; var b2 = 0.0; var b3 = 0.0; var b4 = 0.0; var b5 = 0.0; var b6 = 0.0
+        var ss = 0.0
+        for (i in 0 until n) {
+            val w = rnd.nextDouble() * 2.0 - 1.0
+            b0 = 0.99886 * b0 + w * 0.0555179
+            b1 = 0.99332 * b1 + w * 0.0750759
+            b2 = 0.969 * b2 + w * 0.153852
+            b3 = 0.8665 * b3 + w * 0.3104856
+            b4 = 0.55 * b4 + w * 0.5329522
+            b5 = -0.7616 * b5 - w * 0.016898
+            val v = b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362
+            b6 = w * 0.115926
+            d[i] = v.toFloat()
+            ss += v * v
+        }
+        val k = (1.0 / Math.sqrt(ss / n)).toFloat()
+        for (i in 0 until n) d[i] *= k
+        return d
+    }
+
+    @JavascriptInterface
+    fun pinkLevel(db: Double) {
+        pinkGain = Math.pow(10.0, db / 20.0).toFloat()
+    }
+
+    @JavascriptInterface
+    fun pinkStart(db: Double): String {
+        pinkStop()
+        val res = JSONObject()
+        try {
+            val rate = 48000
+            val usb = am().getDevices(AudioManager.GET_DEVICES_OUTPUTS).firstOrNull { isUsb(it.type) }
+            val min = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
+            val t = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setSampleRate(rate)
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                        .build()
+                )
+                .setBufferSizeInBytes(maxOf(min, rate))
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+            if (usb != null) t.setPreferredDevice(usb)
+            pinkLevel(db)
+            val table = pinkTable ?: makePink(rate * 10).also { pinkTable = it }
+            t.play()
+            trk = t
+            pinkOn = true
+            val th = Thread {
+                val frames = 2048
+                val chunk = ShortArray(frames * 2)
+                var pos = 0
+                while (pinkOn) {
+                    val g = pinkGain * 32767f
+                    for (i in 0 until frames) {
+                        var v = table[pos] * g
+                        if (v > 32767f) v = 32767f
+                        if (v < -32768f) v = -32768f
+                        val sv = v.toInt().toShort()
+                        chunk[2 * i] = sv
+                        chunk[2 * i + 1] = sv
+                        pos++
+                        if (pos >= table.size) pos = 0
+                    }
+                    t.write(chunk, 0, chunk.size)
+                }
+            }
+            th.start()
+            pinkThread = th
+            val routed = t.routedDevice ?: usb
+            res.put("ok", true)
+            res.put("usb", usb != null)
+            res.put("device", routed?.let { label(it) } ?: "salida del teléfono")
+        } catch (e: Exception) {
+            res.put("ok", false)
+            res.put("error", e.message ?: "error")
+        }
+        return res.toString()
+    }
+
+    @JavascriptInterface
+    fun pinkStop() {
+        pinkOn = false
+        try { pinkThread?.join(500) } catch (e: Exception) { }
+        pinkThread = null
+        trk?.let {
+            try { it.stop() } catch (e: Exception) { }
+            it.release()
+        }
+        trk = null
     }
 
     @JavascriptInterface

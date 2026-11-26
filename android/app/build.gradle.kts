@@ -11,8 +11,8 @@ android {
         applicationId = "com.f26.escucha"
         minSdk = 24
         targetSdk = 34
-        versionCode = 12
-        versionName = "12"
+        versionCode = 13
+        versionName = "13"
     }
 
     signingConfigs {

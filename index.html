@@ -124,7 +124,7 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
       <p class="note">Cópialo y compártelo con otro técnico o con tu asistente de IA para revisar los ajustes.</p><textarea id="out" readonly></textarea></section>
   </div>
 </main>
-<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 12 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
+<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 13 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
 <dialog id="dlg"><h2 style="margin:0 0 6px;font:800 28px 'Barlow Condensed',sans-serif">Cómo conectar</h2>
 <ol style="padding-left:20px;margin:0;display:grid;gap:8px;font-size:16px">
 <li><b>Interfaz de audio USB</b> (por ejemplo, una Behringer UMC) conectada al teléfono con cable o adaptador <b>OTG USB-C</b>, o a la computadora.</li>
@@ -398,8 +398,13 @@ let gCtx=null,gSrc=null,gGain=null;
 function pinkBuffer(c){const n=c.sampleRate*10,b=c.createBuffer(2,n,c.sampleRate),d=b.getChannelData(0);let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0,ss=0;
   for(let i=0;i<n;i++){const w=Math.random()*2-1;b0=0.99886*b0+w*0.0555179;b1=0.99332*b1+w*0.0750759;b2=0.969*b2+w*0.153852;b3=0.8665*b3+w*0.3104856;b4=0.55*b4+w*0.5329522;b5=-0.7616*b5-w*0.016898;const v=b0+b1+b2+b3+b4+b5+b6+w*0.5362;b6=w*0.115926;d[i]=v;ss+=v*v}
   const k=1/Math.sqrt(ss/n);for(let i=0;i<n;i++)d[i]*=k;b.getChannelData(1).set(d);return b}
-function pinkLevel(){if(gGain)gGain.gain.value=10**(parseFloat($('pnl').value)/20)}
+function pinkLevel(){if(pinkNat&&NAT)NAT.pinkLevel(parseFloat($('pnl').value));if(gGain)gGain.gain.value=10**(parseFloat($('pnl').value)/20)}
+let pinkNat=false;
 $('pnk').onclick=async()=>{
+  if(NAT&&NAT.pinkStart){
+    if(pinkNat){NAT.pinkStop();pinkNat=false;$('pnk').textContent='Ruido rosa: apagado';return}
+    try{const r=JSON.parse(NAT.pinkStart(parseFloat($('pnl').value)));if(r.ok){pinkNat=true;$('pnk').textContent='Ruido rosa: SONANDO por '+r.device+(r.usb?'':' (no encontré salida USB)')}else $('pnk').textContent='Ruido rosa: error ('+r.error+')'}catch(e){$('pnk').textContent='Ruido rosa: error'}
+    return}
   if(gSrc){try{gSrc.stop()}catch(e){}gSrc=null;$('pnk').textContent='Ruido rosa: apagado';return}
   try{if(!gCtx)gCtx=new AudioContext({sampleRate:48000});await gCtx.resume();gGain=gCtx.createGain();pinkLevel();gSrc=gCtx.createBufferSource();gSrc.buffer=pinkBuffer(gCtx);gSrc.loop=true;gSrc.connect(gGain);gGain.connect(gCtx.destination);gSrc.start();$('pnk').textContent='Ruido rosa: SONANDO'}
   catch(e){$('pnk').textContent='Ruido rosa: error'}};
