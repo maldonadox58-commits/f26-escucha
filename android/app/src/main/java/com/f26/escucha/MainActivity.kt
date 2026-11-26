@@ -170,19 +170,29 @@ class AudioBridge(private val act: MainActivity) {
     }
 
     @JavascriptInterface
-    fun start(id: Int, wantRate: Int): String {
+    fun start(id: Int, wantRate: Int): String = startSrc(id, wantRate, "auto")
+
+    @JavascriptInterface
+    fun startSrc(id: Int, wantRate: Int, pref: String): String {
         stop()
         val res = JSONObject()
         if (!hasPermission()) {
             res.put("ok", false); res.put("error", "sin permiso de micrófono"); return res.toString()
         }
         val dev = am().getDevices(AudioManager.GET_DEVICES_INPUTS).firstOrNull { it.id == id }
+        // Fuentes de grabación de Android (valores numéricos para no depender del nivel de API):
+        // 9 UNPROCESSED, 10 VOICE_PERFORMANCE (Android 10+), 5 CAMCORDER, 1 MIC, 6 VOICE_RECOGNITION
+        val all = linkedMapOf(
+            "UNPROCESSED" to 9, "VOICE_PERFORMANCE" to 10, "CAMCORDER" to 5, "MIC" to 1, "VOICE_RECOGNITION" to 6
+        )
         val sources = mutableListOf<Pair<Int, String>>()
-        if (am().getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED) == "true") {
-            sources.add(MediaRecorder.AudioSource.UNPROCESSED to "UNPROCESSED")
+        if (pref != "auto" && all.containsKey(pref)) {
+            if (pref != "VOICE_PERFORMANCE" || android.os.Build.VERSION.SDK_INT >= 29) sources.add(all[pref]!! to pref)
+        } else {
+            if (am().getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED) == "true") sources.add(9 to "UNPROCESSED")
+            sources.add(1 to "MIC")
+            sources.add(6 to "VOICE_RECOGNITION")
         }
-        sources.add(MediaRecorder.AudioSource.MIC to "MIC")
-        sources.add(MediaRecorder.AudioSource.VOICE_RECOGNITION to "VOICE_RECOGNITION")
 
         var r: AudioRecord? = null
         var srcName = ""

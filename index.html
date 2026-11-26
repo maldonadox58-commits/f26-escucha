@@ -74,6 +74,7 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
     <label>Entrada<select id="dev"><option value="">Predeterminada</option></select></label>
     <label>Canal<select id="ch"><option value="0">Izquierdo (1)</option><option value="1">Derecho (2)</option><option value="2" selected>L + R</option></select></label>
     <label>Qué escucho<select id="mode"></select></label>
+    <label id="asrcL" hidden>Fuente Android<select id="asrc"><option value="auto">Automática</option><option value="UNPROCESSED">Sin procesar</option><option value="VOICE_PERFORMANCE">En vivo (Android 10+)</option><option value="CAMCORDER">Cámara</option><option value="MIC">Micrófono</option><option value="VOICE_RECOGNITION">Reconocimiento de voz</option></select></label>
     <button id="hold" disabled>Congelar</button>
     <button id="ref" disabled>Guardar referencia</button>
     <button id="help">Cómo conectar</button>
@@ -125,7 +126,7 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
   </div>
 </main>
 <div style="text-align:center;padding:0 16px"><button id="dgb">Diagnóstico de audio</button><pre id="dgo" style="text-align:left;white-space:pre-wrap;font-size:13px;display:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px"></pre></div>
-<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 15 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
+<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 16 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
 <dialog id="dlg"><h2 style="margin:0 0 6px;font:800 28px 'Barlow Condensed',sans-serif">Cómo conectar</h2>
 <ol style="padding-left:20px;margin:0;display:grid;gap:8px;font-size:16px">
 <li><b>Interfaz de audio USB</b> (por ejemplo, una Behringer UMC) conectada al teléfono con cable o adaptador <b>OTG USB-C</b>, o a la computadora.</li>
@@ -185,6 +186,8 @@ async function listDevs(){
     if(cur&&[...$('dev').options].some(o=>o.value===cur))$('dev').value=cur;else{const u=d.find(x=>x.usb);if(u)$('dev').value=String(u.id)}}catch(e){}return}
   try{const d=(await navigator.mediaDevices.enumerateDevices()).filter(x=>x.kind==='audioinput');const cur=$('dev').value;$('dev').innerHTML='<option value="">Predeterminada</option>'+d.map((x,i)=>`<option value="${x.deviceId}">${x.label||'Entrada '+(i+1)}</option>`).join('');$('dev').value=cur}catch(e){}}
 listDevs();
+if(NAT){$('asrcL').hidden=false;try{const v=localStorage.getItem('f26asrc');if(v)$('asrc').value=v}catch(e){}}
+$('asrc').onchange=()=>{try{localStorage.setItem('f26asrc',$('asrc').value)}catch(e){}if(running){stop();setTimeout(start,300)}};
 window.f26DevChanged=()=>{const before=$('dev').value;listDevs().then(()=>{if(NAT&&!running){const u=[...$('dev').options].find(o=>/USB/i.test(o.text));if(u)$('dev').value=u.value}})};
 $('dev').addEventListener('focus',()=>{if(NAT)listDevs()});
 function route(){if(!gainL)return;const c=$('ch').value;gainL.gain.value=c==='0'?1:c==='2'?.5:0;gainR.gain.value=c==='1'?1:c==='2'?.5:0}
@@ -196,11 +199,11 @@ async function start(){
     let modOK=false,label='',chs=null;
     if(NAT){
       if(!NAT.hasPermission()){window.f26PermResult=g=>{if(g)start();else $('tips').innerHTML='<li class="hi">Sin permiso de micrófono la app no puede escuchar la interfaz.</li>'};NAT.requestPermission();return}
-      const r=JSON.parse(NAT.start(parseInt($('dev').value||'-1',10),48000));
+      const sp0=$('asrc').value,r=JSON.parse(NAT.startSrc?NAT.startSrc(parseInt($('dev').value||'-1',10),48000,sp0):NAT.start(parseInt($('dev').value||'-1',10),48000));
       if(!r.ok){$('tips').innerHTML=`<li class="hi">No pude abrir la entrada: ${r.error||'error'}.</li>`;return}
       natInfo=r;ctx=new AudioContext({sampleRate:r.rate});await ctx.audioWorklet.addModule(wkURL());modOK=true;
       srcN=new AudioWorkletNode(ctx,'f26src',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[2]});natT=setInterval(pumpNat,20);
-      label=`${r.name||'interfaz'} · ${r.channels} canal(es) · app nativa`;chs=r.channels;
+      label=`${r.name||'interfaz'} · ${r.channels} canal(es) · fuente ${r.source||'?'}`;chs=r.channels;
     }else{
       const id=$('dev').value;
       stream=await navigator.mediaDevices.getUserMedia({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:{ideal:2}}});
