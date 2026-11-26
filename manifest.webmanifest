@@ -1,0 +1,16 @@
+{
+  "name": "F-26 Escucha en vivo",
+  "short_name": "F-26 Escucha",
+  "description": "RTA y asistente de mezcla en vivo para metales, voz, mezcla completa y medición del PA",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#051226",
+  "theme_color": "#051226",
+  "lang": "es",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}
+  ]
+}
