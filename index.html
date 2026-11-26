@@ -401,9 +401,11 @@ let gCtx=null,gSrc=null,gGain=null;
 function pinkBuffer(c){const n=c.sampleRate*10,b=c.createBuffer(2,n,c.sampleRate),d=b.getChannelData(0);let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0,ss=0;
   for(let i=0;i<n;i++){const w=Math.random()*2-1;b0=0.99886*b0+w*0.0555179;b1=0.99332*b1+w*0.0750759;b2=0.969*b2+w*0.153852;b3=0.8665*b3+w*0.3104856;b4=0.55*b4+w*0.5329522;b5=-0.7616*b5-w*0.016898;const v=b0+b1+b2+b3+b4+b5+b6+w*0.5362;b6=w*0.115926;d[i]=v;ss+=v*v}
   const k=1/Math.sqrt(ss/n);for(let i=0;i<n;i++)d[i]*=k;b.getChannelData(1).set(d);return b}
-function pinkLevel(){if(pinkNat&&NAT)NAT.pinkLevel(parseFloat($('pnl').value));if(gGain)gGain.gain.value=10**(parseFloat($('pnl').value)/20)}
+function pinkLevel(){if(NAT&&NAT.pinkLevel){NAT.pinkLevel(parseFloat($('pnl').value));return}if(pinkNat&&NAT)NAT.pinkLevel(parseFloat($('pnl').value));if(gGain)gGain.gain.value=10**(parseFloat($('pnl').value)/20)}
 let pinkNat=false;
 $('pnk').onclick=async()=>{
+  if(NAT&&NAT.pinkStart){if($('pnk').dataset.on){NAT.pinkStop();delete $('pnk').dataset.on;$('pnk').textContent='Ruido rosa: apagado';return}
+    const r=JSON.parse(NAT.pinkStart(parseFloat($('pnl').value)));if(r.ok){$('pnk').dataset.on='1';$('pnk').textContent='Ruido rosa: SONANDO por '+r.device}else $('pnk').textContent='Ruido rosa: '+(r.error||'error');return}
   if(NAT&&NAT.pinkStart){
     if(pinkNat){NAT.pinkStop();pinkNat=false;$('pnk').textContent='Ruido rosa: apagado';return}
     try{const r=JSON.parse(NAT.pinkStart(parseFloat($('pnl').value)));if(r.ok){pinkNat=true;$('pnk').textContent='Ruido rosa: SONANDO por '+r.device+(r.usb?'':' (no encontré salida USB)')}else $('pnk').textContent='Ruido rosa: error ('+r.error+')'}catch(e){$('pnk').textContent='Ruido rosa: error'}
