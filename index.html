@@ -83,6 +83,7 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
 <main>
   <div class="wide">
     <div id="fb"></div>
+    <div id="mono" class="card" hidden style="border-color:var(--warn);border-width:2px"></div>
     <section class="card"><h2>RTA 1/3 de octava · barras: lo que suena · línea roja: curva objetivo <span id="state">· detenido</span></h2>
       <div class="fig" id="fig"><canvas id="cv"></canvas></div>
       <div class="row" style="margin-top:10px;justify-content:space-between"><span id="refInfo" class="note" style="margin:0"></span><button id="unref" disabled>Usar curva general</button></div>
@@ -121,7 +122,7 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
       <p class="note">Cópialo y compártelo con otro técnico o con tu asistente de IA para revisar los ajustes.</p><textarea id="out" readonly></textarea></section>
   </div>
 </main>
-<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 8 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
+<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 10 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
 <dialog id="dlg"><h2 style="margin:0 0 6px;font:800 28px 'Barlow Condensed',sans-serif">Cómo conectar</h2>
 <ol style="padding-left:20px;margin:0;display:grid;gap:8px;font-size:16px">
 <li><b>Interfaz de audio USB</b> (por ejemplo, una Behringer UMC) conectada al teléfono con cable o adaptador <b>OTG USB-C</b>, o a la computadora.</li>
@@ -165,40 +166,66 @@ const now12=()=>new Date().toLocaleTimeString('es-DO',{hour:'numeric',minute:'2-
 const GEQ=[20,25,31.5,40,50,63,80,100,125,160,200,250,315,400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,6300,8000,10000,12500,16000,20000];
 const geqBand=f=>GEQ.reduce((a,b)=>Math.abs(Math.log2(b/f))<Math.abs(Math.log2(a/f))?b:a);
 const fmtG=b=>b>=1000?String(b/1000).replace('.',',')+' kHz':String(b).replace('.',',')+' Hz';
-let slowInit=true,curOff=0,A=null,fbPrev=false,fbLog=[];try{fbLog=JSON.parse(localStorage.getItem('f26fb')||'[]')}catch(e){}
+let monoIn=null,slowInit=true,curOff=0,A=null,fbPrev=false,fbLog=[];try{fbLog=JSON.parse(localStorage.getItem('f26fb')||'[]')}catch(e){}
 let kA=[],kBuf=new Float32Array(2048),lacc={s:0,t:0},lhist=[],lbins=new Float64Array(760),lMom=-99,lShort=-99,lInt=-99,lMaxS=-99,lSlow=null,lBase=null;
 let wkt=null,RL=new Float32Array(65536),RR=new Float32Array(65536),wpos=0,wfill=0,paT=0,paDel=[],paG=null,paRes=null;
 function resetAcc(){slowInit=true;stAcc={n:0,c:0,b:0};acc={n:0,t0:performance.now(),z:Object.fromEntries(ZONES.map(z=>[z.k,0]))};peakMax=-120}
 resetAcc();
-async function listDevs(){try{const d=(await navigator.mediaDevices.enumerateDevices()).filter(x=>x.kind==='audioinput');const cur=$('dev').value;$('dev').innerHTML='<option value="">Predeterminada</option>'+d.map((x,i)=>`<option value="${x.deviceId}">${x.label||'Entrada '+(i+1)}</option>`).join('');$('dev').value=cur}catch(e){}}
+const NAT=window.F26Native||null;let srcN=null,natT=null,natInfo=null;
+const WK=`class C extends AudioWorkletProcessor{constructor(){super();this.n=0;this.L=new Float32Array(2048);this.R=new Float32Array(2048)}process(inp){const i=inp[0];if(i&&i.length){const l=i[0],r=i[1]||i[0];if(this.n+l.length>2048)this.n=0;this.L.set(l,this.n);this.R.set(r,this.n);this.n+=l.length;if(this.n>=2048){this.port.postMessage({L:this.L,R:this.R});this.L=new Float32Array(2048);this.R=new Float32Array(2048);this.n=0}}return true}}registerProcessor('f26cap',C);
+class S extends AudioWorkletProcessor{constructor(){super();this.N=96000;this.L=new Float32Array(this.N);this.R=new Float32Array(this.N);this.w=0;this.r=0;this.c=0;this.go=false;this.port.onmessage=e=>{const L=e.data.L,R=e.data.R;for(let k=0;k<L.length;k++){this.L[this.w]=L[k];this.R[this.w]=R[k];this.w=(this.w+1)%this.N}this.c=Math.min(this.N,this.c+L.length);if(this.c>=4096)this.go=true;if(this.c>24000){const d=this.c-4096;this.r=(this.r+d)%this.N;this.c-=d}}}
+process(i,o){const out=o[0],l=out[0],r=out[1]||out[0],n=l.length;if(!this.go||this.c<n)return true;for(let k=0;k<n;k++){l[k]=this.L[this.r];r[k]=this.R[this.r];this.r=(this.r+1)%this.N}this.c-=n;return true}}registerProcessor('f26src',S);`;
+const wkURL=()=>URL.createObjectURL(new Blob([WK],{type:'application/javascript'}));
+async function listDevs(){
+  if(NAT){try{const d=JSON.parse(NAT.devices()),cur=$('dev').value;
+    $('dev').innerHTML=d.length?d.map(x=>`<option value="${x.id}">${x.name}</option>`).join(''):'<option value="-1">Predeterminada</option>';
+    if(cur&&[...$('dev').options].some(o=>o.value===cur))$('dev').value=cur;else{const u=d.find(x=>x.usb);if(u)$('dev').value=String(u.id)}}catch(e){}return}
+  try{const d=(await navigator.mediaDevices.enumerateDevices()).filter(x=>x.kind==='audioinput');const cur=$('dev').value;$('dev').innerHTML='<option value="">Predeterminada</option>'+d.map((x,i)=>`<option value="${x.deviceId}">${x.label||'Entrada '+(i+1)}</option>`).join('');$('dev').value=cur}catch(e){}}
 listDevs();
 function route(){if(!gainL)return;const c=$('ch').value;gainL.gain.value=c==='0'?1:c==='2'?.5:0;gainR.gain.value=c==='1'?1:c==='2'?.5:0}
+function pumpNat(){if(!NAT||!srcN)return;const b=NAT.read();if(!b)return;const bin=atob(b),n=bin.length>>2,L=new Float32Array(n),R=new Float32Array(n);
+  for(let k=0,j=0;k<n;k++,j+=4){let l=bin.charCodeAt(j)|(bin.charCodeAt(j+1)<<8),r=bin.charCodeAt(j+2)|(bin.charCodeAt(j+3)<<8);if(l>32767)l-=65536;if(r>32767)r-=65536;L[k]=l/32768;R[k]=r/32768}
+  srcN.port.postMessage({L,R},[L.buffer,R.buffer])}
 async function start(){
   try{
-    const id=$('dev').value;
-    stream=await navigator.mediaDevices.getUserMedia({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:{ideal:2}}});
-    ctx=new (window.AudioContext||window.webkitAudioContext)();
-    const src=ctx.createMediaStreamSource(stream),sp=ctx.createChannelSplitter(2);
+    let modOK=false,label='',chs=null;
+    if(NAT){
+      if(!NAT.hasPermission()){window.f26PermResult=g=>{if(g)start();else $('tips').innerHTML='<li class="hi">Sin permiso de micrófono la app no puede escuchar la interfaz.</li>'};NAT.requestPermission();return}
+      const r=JSON.parse(NAT.start(parseInt($('dev').value||'-1',10),48000));
+      if(!r.ok){$('tips').innerHTML=`<li class="hi">No pude abrir la entrada: ${r.error||'error'}.</li>`;return}
+      natInfo=r;ctx=new AudioContext({sampleRate:r.rate});await ctx.audioWorklet.addModule(wkURL());modOK=true;
+      srcN=new AudioWorkletNode(ctx,'f26src',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[2]});natT=setInterval(pumpNat,20);
+      label=`${r.name||'interfaz'} · ${r.channels} canal(es) · app nativa`;chs=r.channels;
+    }else{
+      const id=$('dev').value;
+      stream=await navigator.mediaDevices.getUserMedia({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:{ideal:2}}});
+      ctx=new (window.AudioContext||window.webkitAudioContext)();srcN=ctx.createMediaStreamSource(stream);
+      const tr=stream.getAudioTracks()[0],st=tr.getSettings?tr.getSettings():{};label=`${tr.label||'entrada sin nombre'}${st.channelCount?' · '+st.channelCount+' canal(es)':''}`;chs=st.channelCount||null;
+    }
+    try{await ctx.resume()}catch(e){}
+    const src=srcN,sp=ctx.createChannelSplitter(2);
     gainL=ctx.createGain();gainR=ctx.createGain();sum=ctx.createGain();
     an=ctx.createAnalyser();an.fftSize=16384;an.smoothingTimeConstant=0;
     aL=ctx.createAnalyser();aR=ctx.createAnalyser();aL.fftSize=aR.fftSize=2048;tL=new Float32Array(2048);tR=new Float32Array(2048);sp.connect(aL,0);sp.connect(aR,1);
     kA=[0,1].map(ch=>{const sh=ctx.createBiquadFilter();sh.type='highshelf';sh.frequency.value=1681.97;sh.gain.value=4;const hp=ctx.createBiquadFilter();hp.type='highpass';hp.frequency.value=38.13;hp.Q.value=-6.02;const a=ctx.createAnalyser();a.fftSize=2048;sp.connect(sh,ch);sh.connect(hp);hp.connect(a);return a});
-    try{const code=`class C extends AudioWorkletProcessor{constructor(){super();this.n=0;this.L=new Float32Array(2048);this.R=new Float32Array(2048)}process(inp){const i=inp[0];if(i&&i.length){const l=i[0],r=i[1]||i[0];if(this.n+l.length>2048)this.n=0;this.L.set(l,this.n);this.R.set(r,this.n);this.n+=l.length;if(this.n>=2048){this.port.postMessage({L:this.L,R:this.R});this.L=new Float32Array(2048);this.R=new Float32Array(2048);this.n=0}}return true}}registerProcessor('f26cap',C);`;
-      await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([code],{type:'application/javascript'})));
+    try{if(!modOK){await ctx.audioWorklet.addModule(wkURL());modOK=true}
       wkt=new AudioWorkletNode(ctx,'f26cap',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],channelCount:2,channelCountMode:'explicit',channelInterpretation:'discrete'});
       wkt.port.onmessage=e=>{const {L,R}=e.data;for(let i=0;i<L.length;i++){RL[wpos]=L[i];RR[wpos]=R[i];wpos=(wpos+1)&65535}wfill=Math.min(65536,wfill+L.length)};
       const z=ctx.createGain();z.gain.value=0;src.connect(wkt);wkt.connect(z);z.connect(ctx.destination)}catch(e){wkt=null}
     src.connect(sp);sp.connect(gainL,0);sp.connect(gainR,1);gainL.connect(sum);gainR.connect(sum);sum.connect(an);route();
     fd=new Float32Array(an.frequencyBinCount);td=new Float32Array(an.fftSize);slowBin=new Float32Array(an.frequencyBinCount).fill(-120);vslowBin=new Float32Array(an.frequencyBinCount).fill(-120);
-    wpos=0;wfill=0;resetLufs();running=true;$('go').textContent='Detener';{const tr=stream.getAudioTracks()[0],st=tr.getSettings?tr.getSettings():{};$('src').textContent=`Escuchando: ${tr.label||'entrada sin nombre'}${st.channelCount?' · '+st.channelCount+' canal(es)':''}`}$('ref').disabled=false;$('abA').disabled=false;$('lbb').disabled=false;keepAwake();$('hold').disabled=false;resetAcc();listDevs();last=performance.now();requestAnimationFrame(loop);
-  }catch(e){$('tips').innerHTML=`<li class="hi">No pude abrir la entrada: ${e.name||e}. Abre este archivo en Chrome y permite el micrófono.</li>`}
+    wpos=0;wfill=0;resetLufs();running=true;$('go').textContent='Detener';$('src').textContent='Escuchando: '+label;monoIn=chs?chs<2:null;monoUI();
+    $('ref').disabled=false;$('abA').disabled=false;$('lbb').disabled=false;keepAwake();$('hold').disabled=false;resetAcc();listDevs();last=performance.now();requestAnimationFrame(loop);
+  }catch(e){if(NAT){try{NAT.stop()}catch(x){}}$('tips').innerHTML=`<li class="hi">No pude abrir la entrada: ${e.name||e}. ${NAT?'':'Abre la app en Chrome y permite el micrófono.'}</li>`}
 }
-function stop(){running=false;cap=null;$('abA').disabled=true;$('lbb').disabled=true;wkt=null;$('ref').disabled=true;$('ref').textContent='Guardar referencia';if(wl){wl.release().catch(()=>{});wl=null}if(stream)stream.getTracks().forEach(t=>t.stop());if(ctx)ctx.close();$('go').textContent='Escuchar';$('hold').disabled=true;$('state').textContent='· detenido';$('fb').className=''}
+function stop(){running=false;cap=null;$('abA').disabled=true;$('lbb').disabled=true;wkt=null;$('ref').disabled=true;$('ref').textContent='Guardar referencia';if(wl){wl.release().catch(()=>{});wl=null}
+  if(natT){clearInterval(natT);natT=null}if(NAT){try{NAT.stop()}catch(e){}}srcN=null;
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}if(ctx)ctx.close();$('go').textContent='Escuchar';$('hold').disabled=true;$('state').textContent='· detenido';$('fb').className=''}
 $('go').onclick=()=>running?stop():start();
 $('ch').onchange=route;
 $('dev').onchange=()=>{if(running){stop();setTimeout(start,300)}};
 $('hold').onclick=()=>{held=!held;$('hold').textContent=held?'Seguir':'Congelar'};
-$('mode').onchange=()=>{const md=MODES[$('mode').value],isLR=!!md.lr&&!md.pa;$('stc').hidden=!isLR;$('pac').hidden=!md.pa;if(isLR){$('ch').value='2';route()}if(md.pa){$('ch').value='1';route();paG=null;paRes=null;paDel=[]}A=null;abUI();resetAcc();cap=null;$('ref').textContent='Guardar referencia';refInfoUI()};
+$('mode').onchange=()=>{setTimeout(monoUI,0);const md=MODES[$('mode').value],isLR=!!md.lr&&!md.pa;$('stc').hidden=!isLR;$('pac').hidden=!md.pa;if(isLR){$('ch').value='2';route()}if(md.pa){$('ch').value='1';route();paG=null;paRes=null;paDel=[]}A=null;abUI();resetAcc();cap=null;$('ref').textContent='Guardar referencia';refInfoUI()};
 $('rs').onclick=()=>{resetAcc();resetLufs();A=null;abUI();paG=null;paRes=null;paDel=[];vslowBin&&vslowBin.fill(-120);$('out').value=''};
 function bandDb(spec,fc,sr){const n=spec.length,bw=sr/2/n,lo=Math.max(1,Math.floor(fc/2**(1/6)/bw)),hi=Math.min(n-1,Math.ceil(fc*2**(1/6)/bw));let p=0;for(let i=lo;i<=hi;i++)p+=10**(spec[i]/10);return 10*Math.log10(p+1e-20)}
 function loop(now){
@@ -291,6 +318,11 @@ function stereo(dt,live){
   $('sc').textContent=fmtD(corrS).replace('+','+');
   const w=Math.abs(corrS)*50;$('scb').style.left=(corrS>=0?50:50-w)+'%';$('scb').style.width=w+'%';$('scb').style.background=corrS<0?'var(--red)':corrS<0.3?'var(--warn)':'var(--ok)';
 }
+function monoUI(){
+  const md=MODES[$('mode').value],need=!!md.lr,show=need&&monoIn===true;$('mono').hidden=!show;
+  if(show)$('mono').innerHTML=`<b>Este dispositivo recibe la interfaz en mono (1 canal).</b> ${md.pa?'La medición del PA necesita':'El balance y la correlación estéreo necesitan'} 2 canales separados. Abre la app en Chrome en una computadora (Windows o Mac) con la interfaz conectada. ${md.pa?'':'El analizador y las zonas de la mezcla sí funcionan aquí.'}`;
+  if(md.lr&&!md.pa)$('stc').hidden=show;
+}
 function fbUI(){
   if(!fbLog.length){$('fbl').innerHTML='<li>Sin feedback detectado.</li>';return}
   const byG={};fbLog.forEach(x=>byG[x.g]=(byG[x.g]||0)+x.n);
@@ -331,10 +363,11 @@ function fft(re,im,inv){const n=re.length;let c=fftC[n];if(!c){const rev=new Uin
 function seg(buf,end,len){const o=new Float64Array(len);for(let i=0;i<len;i++)o[i]=buf[(end-len+i+65536*4)&65535];return o}
 function measurePA(sr){
   const tips=[];
+  if(monoIn){$('patips').innerHTML='<li class="hi">Entrada mono (1 canal): esta medición necesita 2 canales. Usa Chrome en una computadora.</li>';return}
   if(!wkt||wfill<65536){$('patips').innerHTML='<li class="ok">Llenando el búfer… pon música o ruido rosa por el PA.</li>';return}
   const N=32768,x=seg(RL,wpos,N),y=seg(RR,wpos,N);let ex=0,ey=0,exy=0;for(let i=0;i<N;i++){ex+=x[i]*x[i];ey+=y[i]*y[i];exy+=x[i]*y[i]}
   if(ex<N*1e-7||ey<N*1e-7){$('patips').innerHTML=`<li class="hi">Falta señal en ${ex<N*1e-7?'Input 1 (consola)':'Input 2 (micrófono)'}.</li>`;return}
-  if(exy/Math.sqrt(ex*ey)>0.999){$('patips').innerHTML='<li class="hi">Input 1 e Input 2 llegan idénticos: el teléfono está recibiendo la UMC en mono, o los dos cables llevan la misma señal. Esta medición necesita 2 canales separados.</li>';return}
+  if(exy/Math.sqrt(ex*ey)>0.999){if(monoIn!==true){monoIn=true;monoUI()}$('patips').innerHTML='<li class="hi">Input 1 e Input 2 llegan idénticos: el teléfono está recibiendo la UMC en mono, o los dos cables llevan la misma señal. Esta medición necesita 2 canales separados.</li>';return}
   const M=65536,xr=new Float64Array(M),xi=new Float64Array(M),yr=new Float64Array(M),yi=new Float64Array(M);xr.set(x);yr.set(y);fft(xr,xi);fft(yr,yi);
   const rr=new Float64Array(M),ri=new Float64Array(M);for(let k=0;k<M;k++){const a=xr[k]*yr[k]+xi[k]*yi[k],b=xr[k]*yi[k]-xi[k]*yr[k],mg=Math.hypot(a,b)+1e-12;rr[k]=a/mg;ri[k]=b/mg}fft(rr,ri,true);
   const maxLag=Math.min(Math.round(0.3*sr),M/2-1);let best=0,bv=0,sa=0;for(let k=0;k<=maxLag;k++){const v=Math.abs(rr[k]);sa+=v;if(v>bv){bv=v;best=k}}
@@ -370,7 +403,7 @@ function drawPA(){
 function tipsUI(pk){
   if(performance.now()-tipT<700)return;tipT=performance.now();
   const list=[];if(pk>-1)list.push({c:'hi',t:'Señal saturando: baja la ganancia del canal o el envío USB 3–6 dB.'});
-  if(MODES[$('mode').value].lr&&stAcc.n>30){if(Math.abs(balS)>1.5)list.push({c:'',t:`Main desbalanceado: ${balS>0?'izquierda':'derecha'} ${Math.abs(balS).toFixed(1).replace('.',',')} dB más fuerte. Revisa pan o el nivel de L/R.`});
+  if(MODES[$('mode').value].lr&&!monoIn&&stAcc.n>30){if(Math.abs(balS)>1.5)list.push({c:'',t:`Main desbalanceado: ${balS>0?'izquierda':'derecha'} ${Math.abs(balS).toFixed(1).replace('.',',')} dB más fuerte. Revisa pan o el nivel de L/R.`});
     if(corrS<0)list.push({c:'hi',t:'Correlación negativa: hay un problema de fase entre L y R. Revisa polaridad o un efecto estéreo.'});else if(corrS<0.3)list.push({c:'',t:'Mezcla muy abierta: en mono puede perder fuerza. Reduce los paneos extremos o el ancho de los efectos.'})}
   if(lBase&&lSlow!=null){const dl=lSlow-lBase.v;if(dl>3)list.push({c:dl>5?'hi':'',t:`Vas subiendo el volumen: ${fmtD(dl)} LU sobre tu nivel base. Baja el Main 2–3 dB si no fue a propósito.`});else if(dl<-4)list.push({c:'',t:`La mezcla bajó ${fmtD(dl)} LU respecto a tu nivel base.`})}
   if(MODES[$('mode').value].pa){list.push({c:'ok',t:'Modo medición del PA: mira la tarjeta «Medición del PA».'});$('tips').innerHTML=list.map(o=>`<li class="${o.c}">${o.t}</li>`).join('');return}
@@ -384,7 +417,7 @@ $('rep').onclick=()=>{
   const z=ZONES.map(o=>`- ${o.n} (${fmtF(o.a)}–${fmtF(o.b)}): ${acc.n?fmtD(acc.z[o.k]/acc.n):'—'} dB`).join('\n');
   const r=resList.length?resList.map(o=>`- ${fmtF(o.f)} (+${o.p.toFixed(0)} dB)`).join('\n'):'- ninguna marcada';
   const rf=refs[mk()];
-  $('out').value=`INFORME F-26 Escucha en vivo\nFuente: ${m.n} · canal ${$('ch').selectedOptions[0].text}\nCurva objetivo: ${rf?'referencia propia del '+rf.d:'general'}\nTiempo analizado: ${mins} min\nPico máximo: ${fmtD(peakMax)} dBFS\nDesviación promedio por zona (frente a la curva objetivo):\n${z}\nResonancias candidatas:\n${r}`+(m.lr&&stAcc.n?`\nEstéreo: balance ${fmtD(stAcc.b/stAcc.n)} dB (+ = izquierda) · correlación ${fmtD(stAcc.c/stAcc.n)}`:'')+`\nSonoridad: integrado ${lInt>-70?fmtD(lInt):'—'} LUFS · máximo 3 s ${lMaxS>-70?fmtD(lMaxS):'—'} LUFS`+(lBase?` · base ${fmtD(lBase.v)} LUFS (${lBase.h})`+(lSlow!=null?`, ahora ${fmtD(lSlow-lBase.v)} LU`:''):'')
+  $('out').value=`INFORME F-26 Escucha en vivo\nFuente: ${m.n} · canal ${$('ch').selectedOptions[0].text}\nCurva objetivo: ${rf?'referencia propia del '+rf.d:'general'}\nTiempo analizado: ${mins} min\nPico máximo: ${fmtD(peakMax)} dBFS\nDesviación promedio por zona (frente a la curva objetivo):\n${z}\nResonancias candidatas:\n${r}`+(m.lr&&monoIn?`\nEstéreo: no disponible (el dispositivo recibe 1 canal)`:'')+(m.lr&&!monoIn&&stAcc.n?`\nEstéreo: balance ${fmtD(stAcc.b/stAcc.n)} dB (+ = izquierda) · correlación ${fmtD(stAcc.c/stAcc.n)}`:'')+`\nSonoridad: integrado ${lInt>-70?fmtD(lInt):'—'} LUFS · máximo 3 s ${lMaxS>-70?fmtD(lMaxS):'—'} LUFS`+(lBase?` · base ${fmtD(lBase.v)} LUFS (${lBase.h})`+(lSlow!=null?`, ahora ${fmtD(lSlow-lBase.v)} LU`:''):'')
     +(fbLog.length?`\nFeedback de la noche:\n`+fbLog.slice(0,12).map(x=>`- ${x.h}: ${fmtF(x.f)} → GEQ ${fmtG(x.g)}${x.n>1?' (×'+x.n+')':''}`).join('\n'):'\nFeedback de la noche: ninguno')
     +(A&&A.mode===mk()?`\nCambio desde A (${A.h}): `+ZONES.map(z=>`${z.n} ${fmtD((zdev[z.k]||0)-A.z[z.k])}`).join(' · '):'')
     +(m.pa&&paRes?`\nMedición del PA: retardo ${paRes.ms.toFixed(1).replace('.',',')} ms (${(paRes.ms*0.343).toFixed(1).replace('.',',')} m)${paRes.inv?' · POLARIDAD INVERTIDA':''}\nRespuesta (dB / coherencia %):\n`+paRes.res.map(r=>`${fmtF(r.f)}: ${fmtD(r.h)} / ${Math.round(r.c*100)}%`).join('\n'):'')
