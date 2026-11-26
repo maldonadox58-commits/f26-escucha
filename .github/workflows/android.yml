@@ -2,7 +2,7 @@ name: Compilar APK
 
 on:
   push:
-    branches: [main, app-android]
+    branches: [v10-original]
   workflow_dispatch:
 
 permissions:
@@ -32,18 +32,18 @@ jobs:
         run: gradle -p android assembleRelease --no-daemon --stacktrace
 
       - name: Preparar archivo
-        run: cp android/app/build/outputs/apk/release/app-release.apk F26-Escucha.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk F26-Escucha-v10.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: F26-Escucha-APK
-          path: F26-Escucha.apk
+          path: F26-Escucha-v10.apk
 
       - name: Publicar descarga
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: apk
-          name: F-26 Escucha (APK para Android)
+          tag_name: apk-v10
+          name: F-26 Escucha v10 (versión de prueba)
           body: "Descarga F26-Escucha.apk e instálala en Android. Lee la interfaz USB en estéreo."
-          files: F26-Escucha.apk
-          make_latest: true
+          files: F26-Escucha-v10.apk
+          make_latest: false
