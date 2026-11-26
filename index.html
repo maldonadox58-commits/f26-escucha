@@ -127,7 +127,7 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
   </div>
 </main>
 <div style="text-align:center;padding:0 16px"><button id="dgb">Diagnóstico de audio</button><pre id="dgo" style="text-align:left;white-space:pre-wrap;font-size:13px;display:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px"></pre></div>
-<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 17 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
+<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 18 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
 <dialog id="dlg"><h2 style="margin:0 0 6px;font:800 28px 'Barlow Condensed',sans-serif">Cómo conectar</h2>
 <ol style="padding-left:20px;margin:0;display:grid;gap:8px;font-size:16px">
 <li><b>Interfaz de audio USB</b> (por ejemplo, una Behringer UMC) conectada al teléfono con cable o adaptador <b>OTG USB-C</b>, o a la computadora.</li>
@@ -176,10 +176,10 @@ let kA=[],kBuf=new Float32Array(2048),lacc={s:0,t:0},lhist=[],lbins=new Float64A
 let wkt=null,RL=new Float32Array(65536),RR=new Float32Array(65536),wpos=0,wfill=0,paT=0,paDel=[],paG=null,paRes=null;
 function resetAcc(){slowInit=true;stAcc={n:0,c:0,b:0};acc={n:0,t0:performance.now(),z:Object.fromEntries(ZONES.map(z=>[z.k,0]))};peakMax=-120}
 resetAcc();
-const NAT=window.F26Native||null;let srcN=null,natT=null,natInfo=null;
+const NAT=window.F26Native||null;let natCuts=0,natSrc='';let srcN=null,natT=null,natInfo=null;
 const WK=`class C extends AudioWorkletProcessor{constructor(){super();this.n=0;this.L=new Float32Array(2048);this.R=new Float32Array(2048)}process(inp){const i=inp[0];if(i&&i.length){const l=i[0],r=i[1]||i[0];if(this.n+l.length>2048)this.n=0;this.L.set(l,this.n);this.R.set(r,this.n);this.n+=l.length;if(this.n>=2048){this.port.postMessage({L:this.L,R:this.R});this.L=new Float32Array(2048);this.R=new Float32Array(2048);this.n=0}}return true}}registerProcessor('f26cap',C);
-class S extends AudioWorkletProcessor{constructor(){super();this.N=96000;this.L=new Float32Array(this.N);this.R=new Float32Array(this.N);this.w=0;this.r=0;this.c=0;this.go=false;this.port.onmessage=e=>{const L=e.data.L,R=e.data.R;for(let k=0;k<L.length;k++){this.L[this.w]=L[k];this.R[this.w]=R[k];this.w=(this.w+1)%this.N}this.c=Math.min(this.N,this.c+L.length);if(this.c>=4096)this.go=true;if(this.c>24000){const d=this.c-4096;this.r=(this.r+d)%this.N;this.c-=d}}}
-process(i,o){const out=o[0],l=out[0],r=out[1]||out[0],n=l.length;if(!this.go||this.c<n)return true;for(let k=0;k<n;k++){l[k]=this.L[this.r];r[k]=this.R[this.r];this.r=(this.r+1)%this.N}this.c-=n;return true}}registerProcessor('f26src',S);`;
+class S extends AudioWorkletProcessor{constructor(){super();this.u=0;this.t=0;this.N=96000;this.L=new Float32Array(this.N);this.R=new Float32Array(this.N);this.w=0;this.r=0;this.c=0;this.go=false;this.port.onmessage=e=>{const L=e.data.L,R=e.data.R;for(let k=0;k<L.length;k++){this.L[this.w]=L[k];this.R[this.w]=R[k];this.w=(this.w+1)%this.N}this.c=Math.min(this.N,this.c+L.length);if(this.c>=4096)this.go=true;if(this.c>24000){const d=this.c-4096;this.r=(this.r+d)%this.N;this.c-=d}}}
+process(i,o){const out=o[0],l=out[0],r=out[1]||out[0],n=l.length;this.t+=n;if(this.t>=48000){this.port.postMessage({u:this.u});this.t=0}if(!this.go)return true;if(this.c<n){this.u++;return true}for(let k=0;k<n;k++){l[k]=this.L[this.r];r[k]=this.R[this.r];this.r=(this.r+1)%this.N}this.c-=n;return true}}registerProcessor('f26src',S);`;
 const wkURL=()=>URL.createObjectURL(new Blob([WK],{type:'application/javascript'}));
 async function listDevs(){
   if(NAT){try{const d=JSON.parse(NAT.devices()),cur=$('dev').value;
@@ -203,7 +203,7 @@ async function start(){
       const sp0=$('asrc').value,r=JSON.parse(NAT.startSrc?NAT.startSrc(parseInt($('dev').value||'-1',10),48000,sp0):NAT.start(parseInt($('dev').value||'-1',10),48000));
       if(!r.ok){$('tips').innerHTML=`<li class="hi">No pude abrir la entrada: ${r.error||'error'}.</li>`;return}
       natInfo=r;ctx=new AudioContext({sampleRate:r.rate});await ctx.audioWorklet.addModule(wkURL());modOK=true;
-      srcN=new AudioWorkletNode(ctx,'f26src',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[2]});natT=setInterval(pumpNat,20);
+      srcN=new AudioWorkletNode(ctx,'f26src',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[2]});natCuts=0;natSrc=r.source||'?';srcN.port.onmessage=e=>{if(e.data&&e.data.u!=null){natCuts=e.data.u;const el=$('src');el.textContent=el.textContent.replace(/ · cortes: \d+$/,'')+' · cortes: '+natCuts}};natT=setInterval(pumpNat,20);
       label=`${r.name||'interfaz'} · ${r.channels} canal(es) · fuente ${r.source||'?'}`;chs=r.channels;
     }else{
       const id=$('dev').value;
@@ -444,7 +444,7 @@ $('rep').onclick=()=>{
   const z=ZONES.map(o=>`- ${o.n} (${fmtF(o.a)}–${fmtF(o.b)}): ${acc.n?fmtD(acc.z[o.k]/acc.n):'—'} dB`).join('\n');
   const r=resList.length?resList.map(o=>`- ${fmtF(o.f)} (+${o.p.toFixed(0)} dB)`).join('\n'):'- ninguna marcada';
   const rf=refs[mk()];
-  $('out').value=`INFORME F-26 Escucha en vivo\nFuente: ${m.n} · canal ${$('ch').selectedOptions[0].text}\nCurva objetivo: ${rf?'referencia propia del '+rf.d:'general'}\nTiempo analizado: ${mins} min\nPico máximo: ${fmtD(peakMax)} dBFS\nDesviación promedio por zona (frente a la curva objetivo):\n${z}\nResonancias candidatas:\n${r}`+(m.lr&&monoIn?`\nEstéreo: no disponible (el dispositivo recibe 1 canal)`:'')+(m.lr&&!monoIn&&stAcc.n?`\nEstéreo: balance ${fmtD(stAcc.b/stAcc.n)} dB (+ = izquierda) · correlación ${fmtD(stAcc.c/stAcc.n)}`:'')+`\nSonoridad: integrado ${lInt>-70?fmtD(lInt):'—'} LUFS · máximo 3 s ${lMaxS>-70?fmtD(lMaxS):'—'} LUFS`+(lBase?` · base ${fmtD(lBase.v)} LUFS (${lBase.h})`+(lSlow!=null?`, ahora ${fmtD(lSlow-lBase.v)} LU`:''):'')
+  $('out').value=`INFORME F-26 Escucha en vivo\nFuente: ${m.n} · canal ${$('ch').selectedOptions[0].text}\nCurva objetivo: ${rf?'referencia propia del '+rf.d:'general'}${NAT?`\nEntrada Android: fuente ${natSrc} · cortes de audio: ${natCuts}`:''}\nTiempo analizado: ${mins} min\nPico máximo: ${fmtD(peakMax)} dBFS\nDesviación promedio por zona (frente a la curva objetivo):\n${z}\nResonancias candidatas:\n${r}`+(m.lr&&monoIn?`\nEstéreo: no disponible (el dispositivo recibe 1 canal)`:'')+(m.lr&&!monoIn&&stAcc.n?`\nEstéreo: balance ${fmtD(stAcc.b/stAcc.n)} dB (+ = izquierda) · correlación ${fmtD(stAcc.c/stAcc.n)}`:'')+`\nSonoridad: integrado ${lInt>-70?fmtD(lInt):'—'} LUFS · máximo 3 s ${lMaxS>-70?fmtD(lMaxS):'—'} LUFS`+(lBase?` · base ${fmtD(lBase.v)} LUFS (${lBase.h})`+(lSlow!=null?`, ahora ${fmtD(lSlow-lBase.v)} LU`:''):'')
     +(fbLog.length?`\nFeedback de la noche:\n`+fbLog.slice(0,12).map(x=>`- ${x.h}: ${fmtF(x.f)} → GEQ ${fmtG(x.g)}${x.n>1?' (×'+x.n+')':''}`).join('\n'):'\nFeedback de la noche: ninguno')
     +(A&&A.mode===mk()?`\nCambio desde A (${A.h}): `+ZONES.map(z=>`${z.n} ${fmtD((zdev[z.k]||0)-A.z[z.k])}`).join(' · '):'')
     +(m.pa&&paRes&&paRes.valid===false?`\nMedición del PA: sin relación entre las entradas (coherencia ${Math.round((paRes.coh||0)*100)} %)`:'')+(m.pa&&paRes&&paRes.valid!==false?`\nMedición del PA: retardo ${paRes.ms.toFixed(1).replace('.',',')} ms (${(paRes.ms*0.343).toFixed(1).replace('.',',')} m)${paRes.inv?' · POLARIDAD INVERTIDA':''}\nRespuesta (dB / coherencia %):\n`+paRes.res.map(r=>`${fmtF(r.f)}: ${fmtD(r.h)} / ${Math.round(r.c*100)}%`).join('\n'):'')
