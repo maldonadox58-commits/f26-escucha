@@ -147,6 +147,29 @@ class AudioBridge(private val act: MainActivity) {
     }
 
     @JavascriptInterface
+    fun diag(): String {
+        val sb = StringBuilder()
+        for ((flag, title) in listOf(AudioManager.GET_DEVICES_INPUTS to "ENTRADAS", AudioManager.GET_DEVICES_OUTPUTS to "SALIDAS")) {
+            sb.append(title).append(":\n")
+            for (d in am().getDevices(flag)) {
+                sb.append("- id ").append(d.id).append(" · tipo ").append(d.type)
+                    .append(" · ").append(d.productName?.toString() ?: "")
+                    .append(" · canales ").append(d.channelCounts.joinToString(","))
+                    .append(" · tasas ").append(d.sampleRates.joinToString(","))
+                    .append("\n")
+            }
+        }
+        val usbm = act.getSystemService(android.hardware.usb.UsbManager::class.java)
+        sb.append("USB conectados:\n")
+        for (u in usbm.deviceList.values) {
+            sb.append("- ").append(u.productName ?: u.deviceName).append(" · clase ").append(u.deviceClass)
+                .append(" · interfaces ").append(u.interfaceCount).append("\n")
+        }
+        sb.append("Android ").append(android.os.Build.VERSION.RELEASE).append(" · ").append(android.os.Build.MODEL)
+        return sb.toString()
+    }
+
+    @JavascriptInterface
     fun start(id: Int, wantRate: Int): String {
         stop()
         val res = JSONObject()

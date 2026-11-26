@@ -124,7 +124,8 @@ dialog{max-width:560px;width:calc(100% - 24px);border:1px solid var(--line);bord
       <p class="note">Cópialo y compártelo con otro técnico o con tu asistente de IA para revisar los ajustes.</p><textarea id="out" readonly></textarea></section>
   </div>
 </main>
-<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 14 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
+<div style="text-align:center;padding:0 16px"><button id="dgb">Diagnóstico de audio</button><pre id="dgo" style="text-align:left;white-space:pre-wrap;font-size:13px;display:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px"></pre></div>
+<p class="note" style="text-align:center;padding:0 16px 24px">F-26 Escucha en vivo · versión 15 · Funciona mejor en Chrome. Las indicaciones son una guía: el oído decide.</p>
 <dialog id="dlg"><h2 style="margin:0 0 6px;font:800 28px 'Barlow Condensed',sans-serif">Cómo conectar</h2>
 <ol style="padding-left:20px;margin:0;display:grid;gap:8px;font-size:16px">
 <li><b>Interfaz de audio USB</b> (por ejemplo, una Behringer UMC) conectada al teléfono con cable o adaptador <b>OTG USB-C</b>, o a la computadora.</li>
@@ -450,6 +451,9 @@ let wl=null;
 async function keepAwake(){try{if('wakeLock' in navigator)wl=await navigator.wakeLock.request('screen')}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(running&&document.visibilityState==='visible')keepAwake()});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{});
+$('dgb').onclick=async()=>{const o=$('dgo');let t='';
+  if(NAT&&NAT.diag){try{t=NAT.diag()}catch(e){t='Error: '+e}}else{try{const d=await navigator.mediaDevices.enumerateDevices();t='Navegador:\n'+d.map(x=>'- '+x.kind+' · '+(x.label||'(sin nombre)')).join('\n')}catch(e){t='Error: '+e}}
+  o.textContent=t;o.style.display='block';try{await navigator.clipboard.writeText(t);$('dgb').textContent='Diagnóstico copiado'}catch(e){}};
 $('help').onclick=()=>$('dlg').showModal();
 $('dlgok').onclick=()=>{$('dlg').close();try{localStorage.setItem('f26help','1')}catch(e){}};
 try{if(!localStorage.getItem('f26help'))$('dlg').showModal()}catch(e){}
